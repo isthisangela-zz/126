@@ -59,59 +59,44 @@ class DataGen(object):
             self.data += delta
 
 
-class BoundControlBox(wx.Panel):
+class ControlInput(wx.Panel):
     """ A static box with a couple of radio buttons and a text
         box. Allows to switch between an automatic mode and a
         manual mode with an associated value.
     """
 
-    def __init__(self, parent, ID, label, initval):
+    def __init__(self, parent, ID, label, init):
         wx.Panel.__init__(self, parent, ID)
-
-        self.value = initval
 
         box = wx.StaticBox(self, -1, label)
         sizer = wx.StaticBoxSizer(box, wx.VERTICAL)
 
-        self.radio_auto = wx.RadioButton(self, -1,
-                                         label="Auto", style=wx.RB_GROUP)
-        self.radio_manual = wx.RadioButton(self, -1,
-                                           label="Manual")
-        self.manual_text = wx.TextCtrl(self, -1,
-                                       size=(35, -1),
-                                       value=str(initval),
-                                       style=wx.TE_PROCESS_ENTER)
+        self.text = wx.TextCtrl(self, -1,
+                               size=(35, -1),
+                               value=str(init),
+                               style=wx.TE_PROCESS_ENTER)
 
-        self.Bind(wx.EVT_UPDATE_UI, self.on_update_manual_text, self.manual_text)
-        self.Bind(wx.EVT_TEXT_ENTER, self.on_text_enter, self.manual_text)
+        self.Bind(wx.EVT_TEXT_ENTER, self.on_text_enter, self.text)
 
-        manual_box = wx.BoxSizer(wx.HORIZONTAL)
-        manual_box.Add(self.radio_manual, flag=wx.ALIGN_CENTER_VERTICAL)
-        manual_box.Add(self.manual_text, flag=wx.ALIGN_CENTER_VERTICAL)
+        box = wx.BoxSizer(wx.HORIZONTAL)
+        box.Add(self.radio_manual, flag=wx.ALIGN_CENTER_VERTICAL)
+        box.Add(self.manual_text, flag=wx.ALIGN_CENTER_VERTICAL)
 
         sizer.Add(self.radio_auto, 0, wx.ALL, 10)
-        sizer.Add(manual_box, 0, wx.ALL, 10)
+        sizer.Add(box, 0, wx.ALL, 10)
 
         self.SetSizer(sizer)
         sizer.Fit(self)
 
-    def on_update_manual_text(self, event):
-        self.manual_text.Enable(self.radio_manual.GetValue())
-
     def on_text_enter(self, event):
-        self.value = self.manual_text.GetValue()
+        self.value = self.text.GetValue()
 
-    def is_auto(self):
-        return self.radio_auto.GetValue()
-
-    def manual_value(self):
+    def value(self):
         return self.value
 
 
-class GraphFrame(wx.Frame):
-    """ The main frame of the application
-    """
-    title = 'Demo: dynamic matplotlib graph'
+class MainFrame(wx.Frame):
+    title = 'EE126 Project: Pyramid Scheme'
 
     def __init__(self):
         wx.Frame.__init__(self, None, -1, self.title)
@@ -120,7 +105,17 @@ class GraphFrame(wx.Frame):
         self.data = [self.datagen.next()]
         self.paused = False
 
-        self.create_menu()
+        self.params_view = ParamsView(self)
+        self.graph_view = GraphView(self)
+        self.graph_view.hide()
+        self.stats_view = StatsView(self)
+        self.stats_view.hide()
+
+        self.sizer = wx.BoxSizer(wx.VERTICAL)
+        self.sizer.Add(self.panel_one, 1, wx.EXPAND)
+        self.sizer.Add(self.panel_two, 1, wx.EXPAND)
+        self.SetSizer(self.sizer)
+
         self.create_status_bar()
         self.create_main_panel()
 
@@ -128,18 +123,6 @@ class GraphFrame(wx.Frame):
         self.Bind(wx.EVT_TIMER, self.on_redraw_timer, self.redraw_timer)
         self.redraw_timer.Start(100)
 
-    def create_menu(self):
-        self.menubar = wx.MenuBar()
-
-        menu_file = wx.Menu()
-        m_expt = menu_file.Append(-1, "&Save plot\tCtrl-S", "Save plot to file")
-        self.Bind(wx.EVT_MENU, self.on_save_plot, m_expt)
-        menu_file.AppendSeparator()
-        m_exit = menu_file.Append(-1, "E&xit\tCtrl-X", "Exit")
-        self.Bind(wx.EVT_MENU, self.on_exit, m_exit)
-
-        self.menubar.Append(menu_file, "&File")
-        self.SetMenuBar(self.menubar)
 
     def create_main_panel(self):
         self.panel = wx.Panel(self)
@@ -147,10 +130,12 @@ class GraphFrame(wx.Frame):
         self.init_plot()
         self.canvas = FigCanvas(self.panel, -1, self.fig)
 
-        self.xmin_control = BoundControlBox(self.panel, -1, "X min", 0)
-        self.xmax_control = BoundControlBox(self.panel, -1, "X max", 50)
-        self.ymin_control = BoundControlBox(self.panel, -1, "Y min", 0)
-        self.ymax_control = BoundControlBox(self.panel, -1, "Y max", 100)
+        self.money_control = ControlInput(self.panel, -1, \
+                                          "Amount of money required to join scheme", 100)
+        self.recruits_control = ControlInput(self.panel, -1, \
+                                             "Number of recruits needed to exit scheme", 200)
+        self.threshold_control = ControlInput(self.panel, -1, \
+                                              "Threshold needed to accept invitation", 300)
 
         self.pause_button = wx.Button(self.panel, -1, "Pause")
         self.Bind(wx.EVT_BUTTON, self.on_pause_button, self.pause_button)
@@ -328,6 +313,6 @@ class GraphFrame(wx.Frame):
 
 if __name__ == '__main__':
     app = wx.App()
-    app.frame = GraphFrame()
+    app.frame = MainFrame()
     app.frame.Show()
     app.MainLoop()
