@@ -23,6 +23,7 @@ class Node:
 		self.patience = self.wealth * 1/(random.uniform(0.00001, 0.001))
 		# wealth * some scalar = patience, how many time steps they wait iuntil sending another invite
 		self.sent_invites = []
+		self.start_time = -1
 
 	#lower bounded by 0
 	def get_probability(self, lower, upper):
@@ -51,7 +52,7 @@ class Scheme:
 	def generate_graph(num_people, num_edges):
 		graph = nx.gnm_random_graph(num_people, num_edges)
 		for (u, v, w) in graph.edges(data = True):
-	    	w['weight'] = random.uniform(0.001, 1)
+	    	w["weight"] = random.uniform(0.001, 1)
 
 	    fat_map = {}
 	    for i in graph.nodes:
@@ -61,26 +62,43 @@ class Scheme:
 	    self.fat_map = fat_map
 	    self.time = 0
 	    self.curr_involved = []
+	    self.curr_invited = {}
 	    self.uninvolved = graph.nodes
-	    self.no_friends = nx.isolates(graph)
 
 	# graph, fat_map, curr time step, people in the scheme rn, people who haven't been involved yet
 	def increment_time():
 		if not len(self.uninvolved):
 			print("but we done boi")
 			return
+		#find a person to start (no one currently involved)
 		while not self.curr_involved:
 			rando = random.randint(0, len(self.uninvolved))
 			start = self.uninvolved.pop(rando)
-			if start in self.no_friends:
+			if not self.graph.degree[start]:
 				self.fat_map[start].status = 2
 			else:
-				if len(self.graph[start]) < self.num_recruits:
+				#would say no anyways
+				if len(self.graph.adj[start]) < self.num_recruits:
 					self.fat_map[start].status = 2
 				else:
+					#yes
 					self.curr_involved.append(start)
 					self.fat_map[start].status = 1
+					self.fat_map[start].start_time = self.time
+
+		for inviter in curr_invited:
+			for invited in curr_invited[inviter]:
+				offset = self.time - invited.start_time
 
 		for person in self.curr_involved:
+			#they out of the scheme
+			if len(self.graph[person]) < self.num_recruits:
+				self.fat_map[person].status = 2
+				self.curr_involved.remove(person)
+
+			#sort neighbors by edge weight largest to smallest
+			neighbors = sorted(self.graph.adj[person], key = lambda x: self.graph[person][x]["weight"], reverse = True)
+
+			#send invites to first nnum_recruits closest friends
 
 
