@@ -82,5 +82,3 @@ class Scheme:
 					self.fat_map[start].status = 1
 
 		for person in self.curr_involved:
-
-
