@@ -6,11 +6,9 @@ from scipy.integrate import quad
 class Node:
 	""" 
 	A Node represents a person in a graph, should have the following:
-	-a randomized lambda value for each person for which we plug into the pdf of an exponential function (between 1/15 to 1)
+	-a randomized lambda value for each person for which we plug into the pdf of an exponential function (between 0.0666, 0.5)
 	-a level of wealth (0 to 1)
-	-threshold (from wealth and closeness) = 1/(closeness) * wealth, between 0 and 1, 
-	compared to the calculated integral of exponential function
-	-an int value in (0, 1, 2) for whether someone is uninvolved, involved, or out
+	-an int value in (0, 1, 2) representing status for whether someone is uninvolved, involved, or out
 	"""
 
 	def __init__(self):
@@ -91,8 +89,6 @@ class Scheme:
 				offset = self.time - invited.start_time
 
 		for person in self.curr_involved:
-<<<<<<< HEAD
-=======
 			#they out of the scheme
 			if len(self.graph[person]) < self.num_recruits:
 				self.fat_map[person].status = 2
@@ -104,4 +100,3 @@ class Scheme:
 			#send invites to first nnum_recruits closest friends
 
 
->>>>>>> f9293241f8f655fee94f8c4f72bf252025a68a5c
