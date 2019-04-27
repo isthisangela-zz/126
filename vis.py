@@ -1,261 +1,152 @@
-"""
-This demo demonstrates how to draw a dynamic mpl (matplotlib)
-plot in a wxPython application.
-It allows "live" plotting as well as manual zooming to specific
-regions.
-Both X and Y axes allow "auto" or "manual" settings. For Y, auto
-mode sets the scaling of the graph to see all the data points.
-For X, auto mode makes the graph "follow" the data. Set it X min
-to manual 0 to always see the whole data from the beginning.
-Note: press Enter in the 'manual' text box to make a new value
-affect the plot.
-Eli Bendersky (eliben@gmail.com)
-License: this code is in the public domain
-Last modified: 31.07.2008
-"""
 import os
 import pprint
 import random
 import sys
 import wx
 
-# The recommended way to use wx with mpl is with the WXAgg
-# backend.
-#
+import json
+import numpy as np
+import networkx as nx
+
 import matplotlib
 
 matplotlib.use('WXAgg')
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_wxagg import \
-    FigureCanvasWxAgg as FigCanvas, \
-    NavigationToolbar2WxAgg as NavigationToolbar
+    FigureCanvasWxAgg as FigCanvas
 import numpy as np
 import pylab
 
+# from project import Node, Scheme
+
+init_recruits = 2
+init_threshold = 500
+
+init_speed = 5
+min_speed = 1
+max_speed = 10
+
+def speed_wrap(speed):
+    return 500 / speed
 
 class DataGen(object):
-    """ A silly class that generates pseudo-random data for
-        display in the plot.
-    """
-
-    def __init__(self, init=50):
-        self.data = self.init = init
+    def __init__(self, recruits, threshold):
+        self.data = self.init = 50
 
     def next(self):
         self._recalc_data()
         return self.data
 
     def _recalc_data(self):
-        delta = random.uniform(-0.5, 0.5)
-        r = random.random()
-
-        if r > 0.9:
-            self.data += delta * 15
-        elif r > 0.8:
-            # attraction to the initial value
-            delta += (0.5 if self.init > self.data else -0.5)
-            self.data += delta
-        else:
-            self.data += delta
+        self.data += 1 # next point
 
 
 class ControlInput(wx.Panel):
-    """ A static box with a couple of radio buttons and a text
-        box. Allows to switch between an automatic mode and a
-        manual mode with an associated value.
-    """
-
     def __init__(self, parent, ID, label, init):
         wx.Panel.__init__(self, parent, ID)
 
         box = wx.StaticBox(self, -1, label)
         sizer = wx.StaticBoxSizer(box, wx.VERTICAL)
 
+        self.val = init
         self.text = wx.TextCtrl(self, -1,
-                               size=(35, -1),
+                               size=(60, -1),
                                value=str(init),
                                style=wx.TE_PROCESS_ENTER)
+        self.text.Bind(wx.EVT_CHAR, self.handle_keypress)
 
-        self.Bind(wx.EVT_TEXT_ENTER, self.on_text_enter, self.text)
+        area = wx.BoxSizer(wx.VERTICAL)
+        area.Add(self.text, flag=wx.ALL | wx.ALIGN_CENTER)
 
-        box = wx.BoxSizer(wx.HORIZONTAL)
-        box.Add(self.radio_manual, flag=wx.ALIGN_CENTER_VERTICAL)
-        box.Add(self.manual_text, flag=wx.ALIGN_CENTER_VERTICAL)
-
-        sizer.Add(self.radio_auto, 0, wx.ALL, 10)
-        sizer.Add(box, 0, wx.ALL, 10)
+        sizer.Add(area, 0, wx.ALL | wx.ALIGN_CENTER)
 
         self.SetSizer(sizer)
         sizer.Fit(self)
 
-    def on_text_enter(self, event):
-        self.value = self.text.GetValue()
+    def handle_keypress(self, event):
+        key_code = event.GetKeyCode()
+        if ord('0') <= key_code <= ord('9'):
+            event.Skip()
+            return
+        if key_code == ord('\t'):
+            event.Skip()
+            return
+        return
 
     def value(self):
-        return self.value
+        return int(self.text.GetValue())
 
 
-class MainFrame(wx.Frame):
-    title = 'EE126 Project: Pyramid Scheme'
+class ParamsView(wx.Panel):
+    def __init__(self, parent):
+        wx.Panel.__init__(self, parent=parent)
+        self.parent = parent
 
-    def __init__(self):
-        wx.Frame.__init__(self, None, -1, self.title)
+        self.recruits_control = ControlInput(self, -1, \
+                                             "Number of recruits needed to exit scheme", init_recruits)
+        self.threshold_control = ControlInput(self, -1, \
+                                              "Threshold needed to accept invitation", init_threshold)
+        self.go_button = wx.Button(self, -1, "Go")
+        self.Bind(wx.EVT_BUTTON, self.on_go_button, self.go_button)
 
-        self.datagen = DataGen()
-        self.data = [self.datagen.next()]
+        self.box = wx.BoxSizer(wx.VERTICAL)
+        self.box.AddSpacer(5)
+        self.box.Add(self.recruits_control, border=5, flag=wx.ALL | wx.ALIGN_CENTER)
+        self.box.Add(self.threshold_control, border=5, flag=wx.ALL | wx.ALIGN_CENTER)
+        self.box.Add(self.go_button, border=10, flag=wx.ALL | wx.ALIGN_CENTER)
+
+        self.SetSizer(self.box)
+        self.box.Fit(self)
+
+    def on_go_button(self, event):
+        recruits = self.recruits_control.value()
+        threshold = self.threshold_control.value()
+        self.parent.set_params(recruits, threshold)
+        self.parent.show_graph()
+
+
+class GraphView(wx.Panel):
+    def __init__(self, parent):
+        wx.Panel.__init__(self, parent=parent)
+        self.parent = parent
+
+        self.data_gen = DataGen(parent.recruits, parent.threshold)
+        self.data = [self.data_gen.next()]
         self.paused = False
 
-        self.params_view = ParamsView(self)
-        self.graph_view = GraphView(self)
-        self.graph_view.hide()
-        self.stats_view = StatsView(self)
-        self.stats_view.hide()
+        self.start_graph()
 
-        self.sizer = wx.BoxSizer(wx.VERTICAL)
-        self.sizer.Add(self.panel_one, 1, wx.EXPAND)
-        self.sizer.Add(self.panel_two, 1, wx.EXPAND)
-        self.SetSizer(self.sizer)
+        self.canvas = FigCanvas(self, -1, self.fig)
 
-        self.create_status_bar()
-        self.create_main_panel()
+        self.speed = speed_wrap(init_speed)
+        self.timer = wx.Timer(self)
+        self.Bind(wx.EVT_TIMER, self.on_timer, self.timer)
+        self.timer.Start(self.speed)
 
-        self.redraw_timer = wx.Timer(self)
-        self.Bind(wx.EVT_TIMER, self.on_redraw_timer, self.redraw_timer)
-        self.redraw_timer.Start(100)
+        self.speed_control = wx.Slider(self, -1, init_speed, min_speed, max_speed, \
+                                      size=(300, 40), style=wx.SL_HORIZONTAL | wx.SL_LABELS)
+        self.speed_control.Bind(wx.EVT_SLIDER, self.on_change_speed)
 
+        self.speed_box = wx.BoxSizer(wx.VERTICAL)
+        self.speed_box.Add(self.speed_control, border=5, flag=wx.ALL | wx.ALIGN_CENTER_VERTICAL)
+        self.speed_box.Add(wx.StaticText(self, -1, "Simulation Speed"), flag=wx.ALL | wx.ALIGN_CENTER)
+        self.speed_box.AddSpacer(20)
 
-    def create_main_panel(self):
-        self.panel = wx.Panel(self)
-
-        self.init_plot()
-        self.canvas = FigCanvas(self.panel, -1, self.fig)
-
-        self.money_control = ControlInput(self.panel, -1, \
-                                          "Amount of money required to join scheme", 100)
-        self.recruits_control = ControlInput(self.panel, -1, \
-                                             "Number of recruits needed to exit scheme", 200)
-        self.threshold_control = ControlInput(self.panel, -1, \
-                                              "Threshold needed to accept invitation", 300)
-
-        self.pause_button = wx.Button(self.panel, -1, "Pause")
+        self.pause_button = wx.Button(self, -1, "Pause")
         self.Bind(wx.EVT_BUTTON, self.on_pause_button, self.pause_button)
         self.Bind(wx.EVT_UPDATE_UI, self.on_update_pause_button, self.pause_button)
 
-        self.cb_grid = wx.CheckBox(self.panel, -1,
-                                   "Show Grid",
-                                   style=wx.ALIGN_RIGHT)
-        self.Bind(wx.EVT_CHECKBOX, self.on_cb_grid, self.cb_grid)
-        self.cb_grid.SetValue(True)
+        self.controls_box = wx.BoxSizer(wx.HORIZONTAL)
+        self.controls_box.Add(self.speed_box, border=5, flag=wx.ALL | wx.ALIGN_CENTER_VERTICAL)
+        self.controls_box.AddSpacer(150)
+        self.controls_box.Add(self.pause_button, border=5, flag=wx.ALL | wx.ALIGN_CENTER_VERTICAL)
 
-        self.cb_xlab = wx.CheckBox(self.panel, -1,
-                                   "Show X labels",
-                                   style=wx.ALIGN_RIGHT)
-        self.Bind(wx.EVT_CHECKBOX, self.on_cb_xlab, self.cb_xlab)
-        self.cb_xlab.SetValue(True)
+        self.whole_box = wx.BoxSizer(wx.VERTICAL)
+        self.whole_box.Add(self.canvas, 1, flag=wx.CENTER | wx.TOP | wx.GROW)
+        self.whole_box.Add(self.controls_box, 0, flag=wx.ALIGN_CENTER | wx.TOP)
 
-        self.hbox1 = wx.BoxSizer(wx.HORIZONTAL)
-        self.hbox1.Add(self.pause_button, border=5, flag=wx.ALL | wx.ALIGN_CENTER_VERTICAL)
-        self.hbox1.AddSpacer(20)
-        self.hbox1.Add(self.cb_grid, border=5, flag=wx.ALL | wx.ALIGN_CENTER_VERTICAL)
-        self.hbox1.AddSpacer(10)
-        self.hbox1.Add(self.cb_xlab, border=5, flag=wx.ALL | wx.ALIGN_CENTER_VERTICAL)
-
-        self.hbox2 = wx.BoxSizer(wx.HORIZONTAL)
-        self.hbox2.Add(self.xmin_control, border=5, flag=wx.ALL)
-        self.hbox2.Add(self.xmax_control, border=5, flag=wx.ALL)
-        self.hbox2.AddSpacer(24)
-        self.hbox2.Add(self.ymin_control, border=5, flag=wx.ALL)
-        self.hbox2.Add(self.ymax_control, border=5, flag=wx.ALL)
-
-        self.vbox = wx.BoxSizer(wx.VERTICAL)
-        self.vbox.Add(self.canvas, 1, flag=wx.LEFT | wx.TOP | wx.GROW)
-        self.vbox.Add(self.hbox1, 0, flag=wx.ALIGN_LEFT | wx.TOP)
-        self.vbox.Add(self.hbox2, 0, flag=wx.ALIGN_LEFT | wx.TOP)
-
-        self.panel.SetSizer(self.vbox)
-        self.vbox.Fit(self)
-
-    def create_status_bar(self):
-        self.statusbar = self.CreateStatusBar()
-
-    def init_plot(self):
-        self.dpi = 100
-        self.fig = Figure((3.0, 3.0), dpi=self.dpi)
-
-        self.axes = self.fig.add_subplot(111)
-        self.axes.set_facecolor('black')
-        self.axes.set_title('Very important random data', size=12)
-
-        pylab.setp(self.axes.get_xticklabels(), fontsize=8)
-        pylab.setp(self.axes.get_yticklabels(), fontsize=8)
-
-        # plot the data as a line series, and save the reference
-        # to the plotted line series
-        #
-        self.plot_data = self.axes.plot(
-            self.data,
-            linewidth=1,
-            color=(1, 1, 0),
-        )[0]
-
-    def draw_plot(self):
-        """ Redraws the plot
-        """
-        # when xmin is on auto, it "follows" xmax to produce a
-        # sliding window effect. therefore, xmin is assigned after
-        # xmax.
-        #
-        if self.xmax_control.is_auto():
-            xmax = len(self.data) if len(self.data) > 50 else 50
-        else:
-            xmax = int(self.xmax_control.manual_value())
-
-        if self.xmin_control.is_auto():
-            xmin = xmax - 50
-        else:
-            xmin = int(self.xmin_control.manual_value())
-
-        # for ymin and ymax, find the minimal and maximal values
-        # in the data set and add a mininal margin.
-        #
-        # note that it's easy to change this scheme to the
-        # minimal/maximal value in the current display, and not
-        # the whole data set.
-        #
-        if self.ymin_control.is_auto():
-            ymin = round(min(self.data), 0) - 1
-        else:
-            ymin = int(self.ymin_control.manual_value())
-
-        if self.ymax_control.is_auto():
-            ymax = round(max(self.data), 0) + 1
-        else:
-            ymax = int(self.ymax_control.manual_value())
-
-        self.axes.set_xbound(lower=xmin, upper=xmax)
-        self.axes.set_ybound(lower=ymin, upper=ymax)
-
-        # anecdote: axes.grid assumes b=True if any other flag is
-        # given even if b is set to False.
-        # so just passing the flag into the first statement won't
-        # work.
-        #
-        if self.cb_grid.IsChecked():
-            self.axes.grid(True, color='gray')
-        else:
-            self.axes.grid(False)
-
-        # Using setp here is convenient, because get_xticklabels
-        # returns a list over which one needs to explicitly
-        # iterate, and setp already handles this.
-        #
-        pylab.setp(self.axes.get_xticklabels(),
-                   visible=self.cb_xlab.IsChecked())
-
-        self.plot_data.set_xdata(np.arange(len(self.data)))
-        self.plot_data.set_ydata(np.array(self.data))
-
-        self.canvas.draw()
+        self.SetSizer(self.whole_box)
+        self.whole_box.Fit(self)
 
     def on_pause_button(self, event):
         self.paused = not self.paused
@@ -264,51 +155,127 @@ class MainFrame(wx.Frame):
         label = "Resume" if self.paused else "Pause"
         self.pause_button.SetLabel(label)
 
-    def on_cb_grid(self, event):
-        self.draw_plot()
+    def on_change_speed(self, event):
+        self.timer.Stop()
+        speed = speed_wrap(self.speed_control.GetValue())
+        self.speed = speed
+        self.timer.Start(speed)
 
-    def on_cb_xlab(self, event):
-        self.draw_plot()
+    def start_graph(self):
+        self.dpi = 100
+        self.fig = Figure((10.0, 6.0), dpi=self.dpi)
 
-    def on_save_plot(self, event):
-        file_choices = "PNG (*.png)|*.png"
+        self.axes = self.fig.add_subplot(111)
+        self.axes.set_facecolor('black')
 
-        dlg = wx.FileDialog(
-            self,
-            message="Save plot as...",
-            defaultDir=os.getcwd(),
-            defaultFile="plot.png",
-            wildcard=file_choices,
-            style=wx.SAVE)
+        pylab.setp(self.axes.get_xticklabels(), visible=False)
+        pylab.setp(self.axes.get_yticklabels(), visible=False)
 
-        if dlg.ShowModal() == wx.ID_OK:
-            path = dlg.GetPath()
-            self.canvas.print_figure(path, dpi=self.dpi)
-            self.flash_status_message("Saved to %s" % path)
+        self.plot_data = self.axes.plot(
+            self.data,
+            linewidth=1,
+            color=(1, 1, 0),
+        )[0]
 
-    def on_redraw_timer(self, event):
-        # if paused do not add data, but still redraw the plot
-        # (to respond to scale modifications, grid change, etc.)
-        #
+    def draw_plot(self):
+        #recruits = self.recruits_control.value()
+        #threshold = self.threshold_control.value()
+
+        xmax = len(self.data) if len(self.data) > 50 else 50
+        xmin = xmax - 50
+        ymax = round(max(self.data), 0) + 1
+        ymin = round(min(self.data), 0) - 1
+        self.axes.set_xbound(lower=xmin, upper=xmax)
+        self.axes.set_ybound(lower=ymin, upper=ymax)
+
+        self.plot_data.set_xdata(np.arange(len(self.data)))
+        self.plot_data.set_ydata(np.array(self.data))
+
+        self.canvas.draw()
+
+    def on_timer(self, event):
         if not self.paused:
-            self.data.append(self.datagen.next())
-
+            self.data.append(self.data_gen.next())
         self.draw_plot()
 
     def on_exit(self, event):
         self.Destroy()
 
-    def flash_status_message(self, msg, flash_len_ms=1500):
-        self.statusbar.SetStatusText(msg)
-        self.timeroff = wx.Timer(self)
-        self.Bind(
-            wx.EVT_TIMER,
-            self.on_flash_status_off,
-            self.timeroff)
-        self.timeroff.Start(flash_len_ms, oneShot=True)
 
-    def on_flash_status_off(self, event):
-        self.statusbar.SetStatusText('')
+class StatsView(wx.Panel):
+    def __init__(self, parent):
+        wx.Panel.__init__(self, parent=parent)
+        self.parent = parent
+
+        self.stats_box = wx.BoxSizer(wx.VERTICAL)
+        self.stats_box.AddSpacer(30)
+        self.stats_box.Add(wx.StaticText(self, -1, "Statistics for this pyramid scheme:"), \
+                           flag=wx.ALL | wx.ALIGN_CENTER)
+        self.stats_box.AddSpacer(10)
+        self.stats_box.Add(wx.StaticText(self, -1, "n nodes were reached"), \
+                           flag=wx.ALL | wx.ALIGN_CENTER)
+        self.stats_box.Add(wx.StaticText(self, -1, "n nodes participated in the scheme"), \
+                           flag=wx.ALL | wx.ALIGN_CENTER)
+        self.stats_box.Add(wx.StaticText(self, -1, "n% of those who participated gained money"), \
+                           flag=wx.ALL | wx.ALIGN_CENTER)
+        self.stats_box.AddSpacer(20)
+        self.again_button = wx.Button(self, -1, "Play again")
+        self.Bind(wx.EVT_BUTTON, self.on_again_button, self.again_button)
+        self.stats_box.Add(self.again_button, flag=wx.ALL | wx.ALIGN_CENTER)
+
+        self.SetSizer(self.stats_box)
+        self.stats_box.Fit(self)
+
+    def on_again_button(self, event):
+        #self.parent.reset_params()
+        self.parent.show_params()
+
+
+class MainFrame(wx.Frame):
+    title = 'EE126 Project: Pyramid Scheme'
+
+    def __init__(self):
+        wx.Frame.__init__(self, None, -1, self.title)
+
+        self.recruits = init_recruits
+        self.threshold = init_threshold
+
+        self.params_view = ParamsView(self)
+        self.graph_view = GraphView(self)
+        self.stats_view = StatsView(self)
+        self.show_params()
+
+        self.sizer = wx.BoxSizer(wx.VERTICAL)
+        self.sizer.Add(self.params_view, 1, wx.EXPAND)
+        self.sizer.Add(self.graph_view, 1, wx.EXPAND)
+        self.sizer.Add(self.stats_view, 1, wx.EXPAND)
+        self.SetSizer(self.sizer)
+
+    def set_params(self, recruits, threshold):
+        self.recruits = recruits
+        self.threshold = threshold
+
+    def reset_params(self):
+        self.recruits = init_recruits
+        self.threshold = init_threshold
+
+    def show_params(self):
+        self.params_view.Show()
+        self.graph_view.Hide()
+        self.stats_view.Hide()
+        self.SetInitialSize((300, 200))
+
+    def show_graph(self):
+        self.params_view.Hide()
+        self.graph_view.Show()
+        self.stats_view.Hide()
+        self.SetInitialSize((1000, 700))
+
+    def show_stats(self):
+        self.params_view.Hide()
+        self.graph_view.Hide()
+        self.stats_view.Show()
+        self.SetInitialSize((400, 200))
 
 
 if __name__ == '__main__':
