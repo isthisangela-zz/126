@@ -17,10 +17,10 @@ from matplotlib.backends.backend_wxagg import \
 import numpy as np
 import pylab
 
-# from project import Node, Scheme
+#from project import Scheme
 
-init_recruits = 2
-init_threshold = 500
+init_recruits = 1
+init_threshold = 0
 
 init_speed = 5
 min_speed = 1
@@ -31,14 +31,12 @@ def speed_wrap(speed):
 
 class DataGen(object):
     def __init__(self, recruits, threshold):
-        self.data = self.init = 50
+        #self.data = Scheme(recruits, threshold)
+        self.graph = nx.karate_club_graph()
 
     def next(self):
-        self._recalc_data()
-        return self.data
-
-    def _recalc_data(self):
-        self.data += 1 # next point
+        print('hi')
+        return nx.karate_club_graph()
 
 
 class ControlInput(wx.Panel):
@@ -111,10 +109,14 @@ class GraphView(wx.Panel):
         self.parent = parent
 
         self.data_gen = DataGen(parent.recruits, parent.threshold)
-        self.data = [self.data_gen.next()]
+        self.data = self.data_gen.next()
         self.paused = False
 
-        self.start_graph()
+        self.dpi = 100
+        self.fig = Figure((10.0, 6.0), dpi=self.dpi)
+        self.axes = self.fig.add_subplot(111, label=np.random.random())
+        pylab.setp(self.axes.get_xticklabels(), visible=False)
+        pylab.setp(self.axes.get_yticklabels(), visible=False)
 
         self.canvas = FigCanvas(self, -1, self.fig)
 
@@ -161,45 +163,15 @@ class GraphView(wx.Panel):
         self.speed = speed
         self.timer.Start(speed)
 
-    def start_graph(self):
-        self.dpi = 100
-        self.fig = Figure((10.0, 6.0), dpi=self.dpi)
-
-        self.axes = self.fig.add_subplot(111)
-        self.axes.set_facecolor('black')
-
-        pylab.setp(self.axes.get_xticklabels(), visible=False)
-        pylab.setp(self.axes.get_yticklabels(), visible=False)
-
-        self.plot_data = self.axes.plot(
-            self.data,
-            linewidth=1,
-            color=(1, 1, 0),
-        )[0]
-
     def draw_plot(self):
-        #recruits = self.recruits_control.value()
-        #threshold = self.threshold_control.value()
-
-        xmax = len(self.data) if len(self.data) > 50 else 50
-        xmin = xmax - 50
-        ymax = round(max(self.data), 0) + 1
-        ymin = round(min(self.data), 0) - 1
-        self.axes.set_xbound(lower=xmin, upper=xmax)
-        self.axes.set_ybound(lower=ymin, upper=ymax)
-
-        self.plot_data.set_xdata(np.arange(len(self.data)))
-        self.plot_data.set_ydata(np.array(self.data))
-
+        self.axes.clear()
+        nx.draw_networkx(self.data, ax=self.axes)
         self.canvas.draw()
 
     def on_timer(self, event):
         if not self.paused:
-            self.data.append(self.data_gen.next())
-        self.draw_plot()
-
-    def on_exit(self, event):
-        self.Destroy()
+            self.data = self.data_gen.next()
+            self.draw_plot()
 
 
 class StatsView(wx.Panel):
