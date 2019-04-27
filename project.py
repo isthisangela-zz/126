@@ -84,9 +84,7 @@ class Scheme:
 					self.uninvolved.append(start)
 				else:
 					#yes
-					self.curr_involved.append(start)
-					self.fat_map[start].status = 1
-					self.fat_map[start].start_time = self.time
+					add_involved(start)
 
 		# when someone is done/cashed out, i remove the node in inviter
 		for inviter in curr_invited:
@@ -98,8 +96,18 @@ class Scheme:
 				#random threshold for responding
 				if response > 0.93:
 					answer = (1/self.graph[inviter][invited]["weight"]) * invited_node.wealth
+					#accept
 					if answer >= self.threshold:
-						self.fat_map[in]
+						add_involved(invited)
+						self.curr_invited[inviter].remove(invited)
+						inviter_node.accepted += 1
+						if inviter_node.accepted == self.num_recruits:
+							inviter_node.status = 2
+							inviter_node.gained_money = 0
+							remove_involved(inviter)
+							break
+					#decline
+					else:
 
 		for person in self.curr_involved:
 			#they out of the scheme
@@ -112,5 +120,20 @@ class Scheme:
 			neighbors = sorted(self.graph.adj[person], key = lambda x: self.graph[person][x]["weight"], reverse = True)
 
 			#send invites to first num_recruits closest friends
+
+	def add_involved(person):
+		node = self.fat_map[person]
+		self.uninvolved.remove(person)
+		self.curr_involved.append(person)
+		self.curr_invited[person] = []
+		node.status = 1
+		node.start_time = self.time
+
+	#modify status and gained_money outside of function
+	def remove_involved(person):
+		node = self.fat_map[person]
+		self.curr_involved.remove(person)
+		del self.curr_invited[person]
+
 
 
