@@ -1,11 +1,5 @@
-import os
-import pprint
-import random
-import sys
 import wx
 
-import json
-import numpy as np
 import networkx as nx
 
 import matplotlib
@@ -17,26 +11,51 @@ from matplotlib.backends.backend_wxagg import \
 import numpy as np
 import pylab
 
-#from project import Scheme
+from project import Scheme
 
 init_recruits = 1
 init_threshold = 0
+init_nodes = 10
+init_degree = 1
 
 init_speed = 5
 min_speed = 1
 max_speed = 10
 
 def speed_wrap(speed):
-    return 500 / speed
+    return 1500 - 100 * (speed + 2)
 
 class DataGen(object):
-    def __init__(self, recruits, threshold):
-        #self.data = Scheme(recruits, threshold)
-        self.graph = nx.karate_club_graph()
+    def __init__(self, recruits, threshold, nodes, edges):
+        self.scheme = Scheme(threshold, recruits)
+        self.scheme.generate_graph(nodes, edges)
+        self.nodes = nodes
+        self.over = False
 
     def next(self):
-        print('hi')
-        return nx.karate_club_graph()
+        time = self.scheme.increment_time()
+        if time == -1:
+            self.over = True
+            return -1, -1
+        else:
+            return self.scheme.graph, self.scheme.color_map
+
+    def get_stats(self):
+        if self.over:
+            a = self.nodes  # number total
+            b = 0
+            c = 0
+
+            for key in self.scheme.fat_map:
+                status = self.scheme.fat_map[key].gained_money
+                if not status == 2:
+                    b += 1
+                    if status == 0:
+                        c += 1
+
+            return a, b, c
+        else:
+            return "no", "no", "no"
 
 
 class ControlInput(wx.Panel):
@@ -46,6 +65,7 @@ class ControlInput(wx.Panel):
         box = wx.StaticBox(self, -1, label)
         sizer = wx.StaticBoxSizer(box, wx.VERTICAL)
 
+        self.label = label
         self.val = init
         self.text = wx.TextCtrl(self, -1,
                                size=(60, -1),
@@ -66,13 +86,19 @@ class ControlInput(wx.Panel):
         if ord('0') <= key_code <= ord('9'):
             event.Skip()
             return
+        if key_code == ord('.'):
+            event.Skip()
+            return
         if key_code == ord('\t'):
             event.Skip()
             return
         return
 
     def value(self):
-        return int(self.text.GetValue())
+        val = self.text.GetValue()
+        if '.' in val:
+            return float(val)
+        return int(val)
 
 
 class ParamsView(wx.Panel):
@@ -84,6 +110,10 @@ class ParamsView(wx.Panel):
                                              "Number of recruits needed to exit scheme", init_recruits)
         self.threshold_control = ControlInput(self, -1, \
                                               "Threshold needed to accept invitation", init_threshold)
+        self.node_control = ControlInput(self, -1, \
+                                              "Size of total population (# nodes)", init_nodes)
+        self.degree_control = ControlInput(self, -1, \
+                                              "Standard number of friends (avg. degree)", init_degree)
         self.go_button = wx.Button(self, -1, "Go")
         self.Bind(wx.EVT_BUTTON, self.on_go_button, self.go_button)
 
@@ -91,6 +121,8 @@ class ParamsView(wx.Panel):
         self.box.AddSpacer(5)
         self.box.Add(self.recruits_control, border=5, flag=wx.ALL | wx.ALIGN_CENTER)
         self.box.Add(self.threshold_control, border=5, flag=wx.ALL | wx.ALIGN_CENTER)
+        self.box.Add(self.node_control, border=5, flag=wx.ALL | wx.ALIGN_CENTER)
+        self.box.Add(self.degree_control, border=5, flag=wx.ALL | wx.ALIGN_CENTER)
         self.box.Add(self.go_button, border=10, flag=wx.ALL | wx.ALIGN_CENTER)
 
         self.SetSizer(self.box)
@@ -99,7 +131,9 @@ class ParamsView(wx.Panel):
     def on_go_button(self, event):
         recruits = self.recruits_control.value()
         threshold = self.threshold_control.value()
-        self.parent.set_params(recruits, threshold)
+        nodes = self.node_control.value()
+        edges = nodes * self.degree_control.value()
+        self.parent.set_params(recruits, threshold, nodes, edges)
         self.parent.show_graph()
 
 
@@ -108,8 +142,8 @@ class GraphView(wx.Panel):
         wx.Panel.__init__(self, parent=parent)
         self.parent = parent
 
-        self.data_gen = DataGen(parent.recruits, parent.threshold)
-        self.data = self.data_gen.next()
+        self.data_gen = DataGen(parent.recruits, parent.threshold, parent.nodes, parent.edges)
+        self.data, self.colors = self.data_gen.next()
         self.paused = False
 
         self.dpi = 100
@@ -121,13 +155,14 @@ class GraphView(wx.Panel):
         self.canvas = FigCanvas(self, -1, self.fig)
 
         self.speed = speed_wrap(init_speed)
-        self.timer = wx.Timer(self)
-        self.Bind(wx.EVT_TIMER, self.on_timer, self.timer)
-        self.timer.Start(self.speed)
 
         self.speed_control = wx.Slider(self, -1, init_speed, min_speed, max_speed, \
                                       size=(300, 40), style=wx.SL_HORIZONTAL | wx.SL_LABELS)
         self.speed_control.Bind(wx.EVT_SLIDER, self.on_change_speed)
+
+        self.timer = wx.Timer(self)
+        self.Bind(wx.EVT_TIMER, self.on_timer, self.timer)
+        self.timer.Start(self.speed)
 
         self.speed_box = wx.BoxSizer(wx.VERTICAL)
         self.speed_box.Add(self.speed_control, border=5, flag=wx.ALL | wx.ALIGN_CENTER_VERTICAL)
@@ -165,30 +200,45 @@ class GraphView(wx.Panel):
 
     def draw_plot(self):
         self.axes.clear()
-        nx.draw_networkx(self.data, ax=self.axes)
+        layout = nx.drawing.layout.circular_layout(self.data)
+        nx.draw_networkx(self.data, pos=layout, node_color=self.colors, ax=self.axes)
         self.canvas.draw()
 
     def on_timer(self, event):
         if not self.paused:
-            self.data = self.data_gen.next()
+            self.data, self.colors = self.data_gen.next()
+            if self.data == -1:
+                a, b, c = self.data_gen.get_stats()
+                self.parent.show_stats(a, b, c)
+                self.timer.Stop()
+                return
             self.draw_plot()
 
 
 class StatsView(wx.Panel):
-    def __init__(self, parent):
+    def __init__(self, parent, a, b, c):
         wx.Panel.__init__(self, parent=parent)
         self.parent = parent
 
         self.stats_box = wx.BoxSizer(wx.VERTICAL)
         self.stats_box.AddSpacer(30)
-        self.stats_box.Add(wx.StaticText(self, -1, "Statistics for this pyramid scheme:"), \
+        self.stats_box.Add(wx.StaticText(self, -1, "Your scheme has collapsed! Statistics:"), \
                            flag=wx.ALL | wx.ALIGN_CENTER)
         self.stats_box.AddSpacer(10)
-        self.stats_box.Add(wx.StaticText(self, -1, "n nodes were reached"), \
+        bee = str(b)
+        if a == b:
+            bee = "all " + str(b)
+        percent = 100 * (c / b)
+        emoji = ":P"
+        if percent > 50:
+            emoji = ":)"
+        if percent < 30:
+            emoji = ">:("
+        self.stats_box.Add(wx.StaticText(self, -1, "Out of " + str(a) + " nodes, " + bee + " participated in the scheme."), \
                            flag=wx.ALL | wx.ALIGN_CENTER)
-        self.stats_box.Add(wx.StaticText(self, -1, "n nodes participated in the scheme"), \
+        self.stats_box.Add(wx.StaticText(self, -1, "Out of those " + str(b) + ", " + str(c) + " made money."), \
                            flag=wx.ALL | wx.ALIGN_CENTER)
-        self.stats_box.Add(wx.StaticText(self, -1, "n% of those who participated gained money"), \
+        self.stats_box.Add(wx.StaticText(self, -1, "Overall, your scheme had a " + str(percent) + "% profit rate " + emoji), \
                            flag=wx.ALL | wx.ALIGN_CENTER)
         self.stats_box.AddSpacer(20)
         self.again_button = wx.Button(self, -1, "Play again")
@@ -199,7 +249,6 @@ class StatsView(wx.Panel):
         self.stats_box.Fit(self)
 
     def on_again_button(self, event):
-        #self.parent.reset_params()
         self.parent.show_params()
 
 
@@ -211,43 +260,42 @@ class MainFrame(wx.Frame):
 
         self.recruits = init_recruits
         self.threshold = init_threshold
+        self.nodes = init_nodes
+        self.edges = init_degree * init_nodes
 
         self.params_view = ParamsView(self)
-        self.graph_view = GraphView(self)
-        self.stats_view = StatsView(self)
-        self.show_params()
+        self.SetInitialSize((300, 350))
 
         self.sizer = wx.BoxSizer(wx.VERTICAL)
         self.sizer.Add(self.params_view, 1, wx.EXPAND)
-        self.sizer.Add(self.graph_view, 1, wx.EXPAND)
-        self.sizer.Add(self.stats_view, 1, wx.EXPAND)
         self.SetSizer(self.sizer)
 
-    def set_params(self, recruits, threshold):
+    def set_params(self, recruits, threshold, nodes, edges):
         self.recruits = recruits
         self.threshold = threshold
-
-    def reset_params(self):
-        self.recruits = init_recruits
-        self.threshold = init_threshold
+        self.nodes = nodes
+        self.edges = edges
 
     def show_params(self):
-        self.params_view.Show()
-        self.graph_view.Hide()
         self.stats_view.Hide()
-        self.SetInitialSize((300, 200))
+        self.params_view = ParamsView(self)
+        self.sizer.Add(self.params_view, 1, wx.EXPAND)
+        self.params_view.Show()
+        self.SetInitialSize((300, 350))
 
     def show_graph(self):
         self.params_view.Hide()
+        self.graph_view = GraphView(self)
+        self.sizer.Add(self.graph_view, 1, wx.EXPAND)
         self.graph_view.Show()
-        self.stats_view.Hide()
         self.SetInitialSize((1000, 700))
 
-    def show_stats(self):
-        self.params_view.Hide()
+    def show_stats(self, a, b, c):
         self.graph_view.Hide()
+        self.stats_view = StatsView(self, a, b, c)
+        self.sizer.Add(self.stats_view, 1, wx.EXPAND)
         self.stats_view.Show()
-        self.SetInitialSize((400, 200))
+        self.SetInitialSize((500, 200))
 
 
 if __name__ == '__main__':

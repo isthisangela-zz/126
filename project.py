@@ -65,13 +65,14 @@ class Scheme:
 		self.time = 0
 		self.curr_involved = []
 		self.curr_invited = {}
-		self.uninvolved = graph.nodes()
+		self.uninvolved = list(graph.nodes())
+		self.color_map = ['white'] * num_people
 
 	# graph, fat_map, curr time step, people in the scheme rn, people who haven't been involved yet
 	def increment_time(self):
 		if not len(self.uninvolved) and not self.curr_invited:
 			print("but we done boi")
-			return True
+			return -1
 		#find a person to start (no one currently involved)
 		while not self.curr_involved:
 			rando = random.randint(0, len(self.uninvolved) - 1)
@@ -79,6 +80,7 @@ class Scheme:
 			if not self.graph.degree()[start]: # if the guy we chose has no friends
 				self.fat_map[start].status = 2
 				self.fat_map[start].gained_money = 3
+				self.color_map[start] = 'white'
 			else:
 				#JK just don't include them
 				if len(self.graph.adj[start]) < self.num_recruits:
@@ -95,6 +97,7 @@ class Scheme:
 			if inviter_node.sent_invites == len(self.graph[inviter]) and not self.curr_invited[inviter]:
 				inviter_node.status = 2
 				inviter_node.gained_money = 1
+				self.color_map[inviter] = 'red'
 				self.remove_involved(inviter)
 				continue
 
@@ -115,6 +118,7 @@ class Scheme:
 						if inviter_node.accepted == self.num_recruits:
 							inviter_node.status = 2
 							inviter_node.gained_money = 0
+							self.color_map[invited] = 'green'
 							self.remove_involved(inviter)
 							break
 					#decline
@@ -125,6 +129,7 @@ class Scheme:
 							print("We yeeting out of here!")
 							invited_node.status = 2
 							invited_node.gained_money = 2
+							self.color_map[invited] = 'black'
 							if invited not in self.curr_involved:
 								self.uninvolved.remove(invited)
 
@@ -147,11 +152,13 @@ class Scheme:
 		if len(self.graph[person]) < self.num_recruits: # not enough friends
 			node.status = 2
 			node.gained_money = 1
+			self.color_map[person] = 'red'
 			self.remove_involved(person)
 			return
 
 		self.send_invite(person)
 		node.status = 1
+		self.color_map[person] = 'yellow'
 		node.start_time = self.time
 
 	#modify status and gained_money outside of function
@@ -180,15 +187,3 @@ class Scheme:
 				self.curr_invited[person].append(neighbors[node.sent_invites])
 				node.sent_invites += 1
 				node.time_since_invite = 0
-
-
-scheme = Scheme(0.3, 2)
-scheme.generate_graph(10, 45)
-print(scheme.graph)
-# print("Time: " + str(scheme.time) + ", Involved: " + str(scheme.curr_involved) + ", Invited: " + str(scheme.curr_invited) + ", Uninvolved: " + str(scheme.uninvolved) + ", Threshold: " + str(scheme.threshold) + ", Number of recruits: " + str(scheme.num_recruits))
-while not scheme.increment_time():
-	print("Time: " + str(scheme.time) + ", Involved: " + str(scheme.curr_involved) 
-		+ ", Invited: " + str(scheme.curr_invited) + ", Uninvolved: " + str(scheme.uninvolved) + 
-		", Threshold: " + str(scheme.threshold) + ", Number of recruits: " + str(scheme.num_recruits) + "\n")
-for node in scheme.fat_map:
-	print(scheme.fat_map[node].gained_money)
