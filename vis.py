@@ -25,7 +25,7 @@ max_speed = 10
 def speed_wrap(speed):
     return 1100 - 100 * speed
 
-class DataGen(object):
+class GraphGen(object):
     def __init__(self, recruits, threshold, nodes, edges):
         self.scheme = Scheme(threshold, recruits)
         self.scheme.generate_graph(nodes, edges)
@@ -142,8 +142,8 @@ class GraphView(wx.Panel):
         wx.Panel.__init__(self, parent=parent)
         self.parent = parent
 
-        self.data_gen = DataGen(parent.recruits, parent.threshold, parent.nodes, parent.edges)
-        self.data, self.colors = self.data_gen.next()
+        self.graph_gen = GraphGen(parent.recruits, parent.threshold, parent.nodes, parent.edges)
+        self.graph, self.colors = self.graph_gen.next()
         self.paused = False
 
         self.dpi = 100
@@ -219,15 +219,15 @@ class GraphView(wx.Panel):
         self.axes.clear()
         pylab.setp(self.axes.get_xticklabels(), visible=False)
         pylab.setp(self.axes.get_yticklabels(), visible=False)
-        layout = nx.drawing.layout.circular_layout(self.data)
-        nx.draw_networkx(self.data, pos=layout, node_color=self.colors, ax=self.axes)
+        layout = nx.drawing.layout.circular_layout(self.graph)
+        nx.draw_networkx(self.graph, pos=layout, node_color=self.colors, ax=self.axes)
         self.canvas.draw()
 
     def on_timer(self, event):
         if not self.paused:
-            self.data, self.colors = self.data_gen.next()
-            if self.data == -1:
-                a, b, c = self.data_gen.get_stats()
+            self.graph, self.colors = self.graph_gen.next()
+            if self.graph == -1:
+                a, b, c = self.graph_gen.get_stats()
                 self.parent.show_stats(a, b, c)
                 self.timer.Stop()
                 return
