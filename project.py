@@ -74,6 +74,7 @@ class Scheme:
 			return True
 		#find a person to start (no one currently involved)
 		while not self.curr_involved:
+			print("lets find someone to start the scheme!")
 			rando = random.randint(0, len(self.uninvolved) - 1)
 			start = self.uninvolved.pop(rando)
 			if not self.graph.degree()[start]: # if the guy we chose has no friends
@@ -85,7 +86,9 @@ class Scheme:
 					self.uninvolved.append(start)
 				else:
 					#yes
+					print("going to add involved")
 					self.add_involved(start)
+
 
 		# when someone is done/cashed out, i remove the node in inviter
 		for inviter in list(self.curr_invited.keys()):
@@ -101,8 +104,9 @@ class Scheme:
 				invited_node = self.fat_map[invited]
 				offset = self.time - invited_node.start_time
 				response = invited_node.get_probability(0, offset)
+				print("probability of responding: " + str(response) + ", offset: " + str(offset))
 				#random threshold for responding
-				if response > 0.9:
+				if response > 0.5:
 					answer = (1/self.graph[inviter][invited]["weight"]) * invited_node.wealth
 					self.curr_invited[inviter].remove(invited)
 					#accept
@@ -116,8 +120,9 @@ class Scheme:
 							break
 					#decline
 					else:
-						invited_node.status = 2
-						invited_node.gained_money = 2
+						if not invited_node.status:
+							invited_node.status = 2
+							invited_node.gained_money = 2
 
 			inviter_node.time_since_invite += 1
 			if inviter_node.time_since_invite > inviter_node.patience:
@@ -170,11 +175,14 @@ class Scheme:
 				node.time_since_invite = 0
 
 
-scheme = Scheme(0, 4)
-scheme.generate_graph(20, 60)
+scheme = Scheme(0.3, 5)
+scheme.generate_graph(20, 190)
 print(scheme.graph)
 # print("Time: " + str(scheme.time) + ", Involved: " + str(scheme.curr_involved) + ", Invited: " + str(scheme.curr_invited) + ", Uninvolved: " + str(scheme.uninvolved) + ", Threshold: " + str(scheme.threshold) + ", Number of recruits: " + str(scheme.num_recruits))
-while not scheme.increment_time():
-	print("Time: " + str(scheme.time) + ", Involved: " + str(scheme.curr_involved) + ", Invited: " + str(scheme.curr_invited) + ", Uninvolved: " + str(scheme.uninvolved) + ", Threshold: " + str(scheme.threshold) + ", Number of recruits: " + str(scheme.num_recruits) + "\n")
+for _ in range(50):
+	scheme.increment_time()
+	print("Time: " + str(scheme.time) + ", Involved: " + str(scheme.curr_involved) 
+		+ ", Invited: " + str(scheme.curr_invited) + ", Uninvolved: " + str(scheme.uninvolved) + 
+		", Threshold: " + str(scheme.threshold) + ", Number of recruits: " + str(scheme.num_recruits) + "\n")
 for node in scheme.fat_map:
 	print(scheme.fat_map[node].gained_money)
