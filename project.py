@@ -87,9 +87,16 @@ class Scheme:
 					self.add_involved(start)
 
 		# when someone is done/cashed out, i remove the node in inviter
-		for inviter in list(curr_invited.keys()):
-			for invited in curr_invited[inviter][:]:
-				inviter_node = self.fat_map[inviter]
+		for inviter in list(self.curr_invited.keys()):
+			inviter_node = self.fat_map[inviter]
+			# if they sent invites to all friends but everyone has already responded
+			if inviter_node.sent_invites == len(self.graph[inviter]) and not self.curr_invited[inviter]:
+				inviter_node.status = 2
+				inviter_node.gained_money = 1
+				self.remove_involved(inviter)
+				continue
+
+			for invited in self.curr_invited[inviter][:]:
 				invited_node = self.fat_map[invited]
 				offset = self.time - invited_node.start_time
 				response = invited_node.get_probability(0, offset)
@@ -116,25 +123,6 @@ class Scheme:
 			if inviter_node.time_since_invite > inviter_node.patience:
 				self.send_invite(inviter)
 
-		#can't delete elements in list while iterating
-		for person in self.curr_involved[:]:
-			# they out of the scheme
-			node = self.fat_map[person]
-			if len(self.graph[person]) < self.num_recruits: # not enough friends
-				node.status = 2
-				node.gained_money = 1
-				self.remove_involved(person)
-				continue
-
-			#sort neighbors by edge weight largest to smallest
-			neighbors = sorted(self.graph.adj[person], key = lambda x: self.graph[person][x]["weight"], reverse = True)
-
-			#send invites to first num_recruits closest friends
-			# need to make sure they are not out or have denied
-			for index in range(num_recruits):
-				self.curr_invited.add(neighbors[index])
-				self.fat_map[person].sent_invites += 1 # 
-
 		self.time += 1
 
 	def add_involved(self, person):
@@ -142,6 +130,14 @@ class Scheme:
 		self.uninvolved.remove(person)
 		self.curr_involved.append(person)
 		self.curr_invited[person] = []
+
+		if len(self.graph[person]) < self.num_recruits: # not enough friends
+			node.status = 2
+			node.gained_money = 1
+			self.remove_involved(person)
+			return
+
+		self.send_invite(person)
 		node.status = 1
 		node.start_time = self.time
 
@@ -157,12 +153,17 @@ class Scheme:
 			return
 		else:
 			#sort neighbors by edge weight largest to smallest
-			neighbors = sorted(self.graph.adj[person], key = lambda x: self.graph[person][x]["weight"], reverse = True)
+			neighbors = sorted(self.graph.adj[person], key = lambda x: self.graph[person][x]["weight"])
 
 			#first invite
 			if not node.sent_invites:
 				node.sent_invites = num_recruits
+				node.time_since_invite = 0
 				for new_invite in neighbors[:sent_invites]:
 					self.curr_invited[person].append(new_invite)
+			else:
+				self.curr_invited[person].append(neighbors[node.sent_invites])
+				node.sent_invites += 1
+				node.time_since_invite = 0
 
 
