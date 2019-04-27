@@ -5,6 +5,6 @@ Candace Chiang
 Angela Dong
 
 To view our project, please run the command:
-pythonw vis.py
+`pythonw vis.py`
 
 Thank you!
