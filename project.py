@@ -22,8 +22,11 @@ class Node:
 		self.status = 0 # uninvolved
 		self.patience = self.wealth * 1/(random.uniform(0.00001, 0.001))
 		# wealth * some scalar = patience, how many time steps they wait iuntil sending another invite
-		self.sent_invites = []
+		self.sent_invites = 0
+		self.accepted = 0
 		self.start_time = -1
+		# 0 = cashed out/got money, 1 = lost money/failed, 2 = declined
+		self.gained_money = -1
 
 	#lower bounded by 0
 	def get_probability(self, lower, upper):
@@ -76,29 +79,40 @@ class Scheme:
 			start = self.uninvolved.pop(rando)
 			if not self.graph.degree[start]:
 				self.fat_map[start].status = 2
+				self.fat_map[start].gained_money = 2
 			else:
-				#would say no anyways
+				#JK just don't include them
 				if len(self.graph.adj[start]) < self.num_recruits:
-					self.fat_map[start].status = 2
+					self.uninvolved.append(start)
 				else:
 					#yes
 					self.curr_involved.append(start)
 					self.fat_map[start].status = 1
 					self.fat_map[start].start_time = self.time
 
+		# when someone is done/cashed out, i remove the node in inviter
 		for inviter in curr_invited:
 			for invited in curr_invited[inviter]:
-				offset = self.time - invited.start_time
+				inviter_node = self.fat_map[inviter]
+				invited_node = self.fat_map[invited]
+				offset = self.time - invited_node.start_time
+				response = invited_node.get_probability(0, offset)
+				#random threshold for responding
+				if response > 0.93:
+					answer = (1/self.graph[inviter][invited]["weight"]) * invited_node.wealth
+					if answer >= self.threshold:
+						self.fat_map[in]
 
 		for person in self.curr_involved:
 			#they out of the scheme
 			if len(self.graph[person]) < self.num_recruits:
 				self.fat_map[person].status = 2
+				self.fat_map[person].gained_money = 1
 				self.curr_involved.remove(person)
 
 			#sort neighbors by edge weight largest to smallest
 			neighbors = sorted(self.graph.adj[person], key = lambda x: self.graph[person][x]["weight"], reverse = True)
 
-			#send invites to first nnum_recruits closest friends
+			#send invites to first num_recruits closest friends
 
 
