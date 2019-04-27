@@ -16,15 +16,15 @@ class Node:
 		# randomize the lambda, wealth, and closeness
 
 		self.goat = random.uniform(0.0666, 0.5)
-		self.wealth = random.uniform(0.001, 1)
+		self.wealth = random.uniform(0.1, 0.4)
 		self.status = 0 # uninvolved
-		self.patience = self.wealth * 1/(random.uniform(0.00001, 0.001))
+		self.patience = self.wealth * 1/(random.uniform(0.015, 0.02)) # min patience is 5, max patience is 26 days
 		self.time_since_invite = 0
 		# wealth * some scalar = patience, how many time steps they wait iuntil sending another invite
 		self.sent_invites = 0  # how many people theyve sent invites to
 		self.accepted = 0 # 
 		self.start_time = -1
-		# 0 = cashed out/got money, 1 = lost money/failed, 2 = declined, 3 = no friends
+		# 0 = cashed out/got money, 1 = lost money/failed, 2 = declined
 		self.gained_money = -1
 
 	#lower bounded by 0
@@ -53,7 +53,7 @@ class Scheme:
 	def generate_graph(self, num_people, num_edges):
 		graph = nx.gnm_random_graph(num_people, num_edges)
 		for (u, v, w) in graph.edges(data = True):
-			w["weight"] = random.uniform(0.001, 1)
+			w["weight"] = random.uniform(0.4, 1)
 
 		fat_map = {}
 		for i in graph.nodes():
@@ -74,7 +74,6 @@ class Scheme:
 			return True
 		#find a person to start (no one currently involved)
 		while not self.curr_involved:
-			print("lets find someone to start the scheme!")
 			rando = random.randint(0, len(self.uninvolved) - 1)
 			start = self.uninvolved.pop(rando)
 			if not self.graph.degree()[start]: # if the guy we chose has no friends
@@ -86,7 +85,6 @@ class Scheme:
 					self.uninvolved.append(start)
 				else:
 					#yes
-					print("going to add involved")
 					self.add_involved(start)
 
 
@@ -104,11 +102,12 @@ class Scheme:
 				invited_node = self.fat_map[invited]
 				offset = self.time - invited_node.start_time
 				response = invited_node.get_probability(0, offset)
-				print("probability of responding: " + str(response) + ", offset: " + str(offset))
+				# print("probability of " + str(invited) + " responding: " + str(response) + ", offset: " + str(offset))
 				#random threshold for responding
 				if response > 0.5:
-					answer = (1/self.graph[inviter][invited]["weight"]) * invited_node.wealth
+					answer = (1/self.graph[inviter][invited]["weight"]) * invited_node.wealth # max answer = 1, min answer = 0.1
 					self.curr_invited[inviter].remove(invited)
+					print(str(answer) + " is the calculated prob of yes, vs. " + str(self.threshold))
 					#accept
 					if answer >= self.threshold and not invited_node.status:
 						self.add_involved(invited)
@@ -120,12 +119,18 @@ class Scheme:
 							break
 					#decline
 					else:
+						print(str(invited) + " says no! They are currently in gained_money state " 
+							+ str(invited_node.gained_money) + ", and their status is " + str(invited_node.status))
 						if not invited_node.status:
+							print("We yeeting out of here!")
 							invited_node.status = 2
 							invited_node.gained_money = 2
+							if invited not in self.curr_involved:
+								self.uninvolved.remove(invited)
 
+			# print("Patience: " + str(inviter_node.patience) + " vs. Time Since Invite: " + str(inviter_node.time_since_invite))
 			inviter_node.time_since_invite += 1
-			if inviter_node.time_since_invite > inviter_node.patience:
+			if inviter_node.time_since_invite > inviter_node.patience or inviter in list(self.curr_invited.keys()) and not self.curr_invited[inviter]: # to make sure they are not waiting on an empty list of people.
 				self.send_invite(inviter)
 
 		self.time += 1
@@ -169,18 +174,19 @@ class Scheme:
 				node.time_since_invite = 0
 				for new_invite in neighbors[:node.sent_invites]:
 					self.curr_invited[person].append(new_invite)
-			else:
+					# self.fat_map[new_invite].start_time = self.time # set the start time to be the current time, so offset is correct
+
+			else: # did we check if we have enough friends??
 				self.curr_invited[person].append(neighbors[node.sent_invites])
 				node.sent_invites += 1
 				node.time_since_invite = 0
 
 
-scheme = Scheme(0.3, 5)
-scheme.generate_graph(20, 190)
+scheme = Scheme(0.3, 2)
+scheme.generate_graph(10, 45)
 print(scheme.graph)
 # print("Time: " + str(scheme.time) + ", Involved: " + str(scheme.curr_involved) + ", Invited: " + str(scheme.curr_invited) + ", Uninvolved: " + str(scheme.uninvolved) + ", Threshold: " + str(scheme.threshold) + ", Number of recruits: " + str(scheme.num_recruits))
-for _ in range(50):
-	scheme.increment_time()
+while not scheme.increment_time():
 	print("Time: " + str(scheme.time) + ", Involved: " + str(scheme.curr_involved) 
 		+ ", Invited: " + str(scheme.curr_invited) + ", Uninvolved: " + str(scheme.uninvolved) + 
 		", Threshold: " + str(scheme.threshold) + ", Number of recruits: " + str(scheme.num_recruits) + "\n")
