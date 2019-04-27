@@ -20,8 +20,8 @@ class Node:
 		self.status = 0 # uninvolved
 		self.patience = self.wealth * 1/(random.uniform(0.00001, 0.001))
 		# wealth * some scalar = patience, how many time steps they wait iuntil sending another invite
-		self.sent_invites = 0
-		self.accepted = 0
+		self.sent_invites = 0  # how many people theyve sent invites to
+		self.accepted = 0 # 
 		self.start_time = -1
 		# 0 = cashed out/got money, 1 = lost money/failed, 2 = declined
 		self.gained_money = -1
@@ -110,8 +110,8 @@ class Scheme:
 					else:
 
 		for person in self.curr_involved:
-			#they out of the scheme
-			if len(self.graph[person]) < self.num_recruits:
+			# they out of the scheme
+			if len(self.graph[person]) < self.num_recruits: # not enough friends
 				self.fat_map[person].status = 2
 				self.fat_map[person].gained_money = 1
 				self.curr_involved.remove(person)
@@ -120,6 +120,10 @@ class Scheme:
 			neighbors = sorted(self.graph.adj[person], key = lambda x: self.graph[person][x]["weight"], reverse = True)
 
 			#send invites to first num_recruits closest friends
+			# need to make sure they are not out or have denied
+			for index in range(num_recruits):
+				self.curr_invited.add(neighbors[index])
+				self.fat_map[person].sent_invites += 1 # 
 
 	def add_involved(person):
 		node = self.fat_map[person]
@@ -134,6 +138,4 @@ class Scheme:
 		node = self.fat_map[person]
 		self.curr_involved.remove(person)
 		del self.curr_invited[person]
-
-
 
