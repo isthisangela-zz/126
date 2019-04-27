@@ -16,14 +16,14 @@ from project import Scheme
 init_recruits = 1
 init_threshold = 0
 init_nodes = 10
-init_degree = 1
+init_degree = 2
 
 init_speed = 5
 min_speed = 1
 max_speed = 10
 
 def speed_wrap(speed):
-    return 1500 - 100 * (speed + 2)
+    return 1100 - 100 * speed
 
 class DataGen(object):
     def __init__(self, recruits, threshold, nodes, edges):
@@ -173,10 +173,27 @@ class GraphView(wx.Panel):
         self.Bind(wx.EVT_BUTTON, self.on_pause_button, self.pause_button)
         self.Bind(wx.EVT_UPDATE_UI, self.on_update_pause_button, self.pause_button)
 
+        self.legend = wx.BoxSizer(wx.VERTICAL)
+        yellow = wx.StaticText(self, -1, "Actively participating")
+        yellow.SetBackgroundColour((255, 255, 0))
+        green = wx.StaticText(self, -1, "Out, made money")
+        green.SetBackgroundColour((0, 255, 0))
+        red = wx.StaticText(self, -1, "Out, lost money")
+        red.SetBackgroundColour((255, 0, 0))
+        black = wx.StaticText(self, -1, "Out, declined invite")
+        black.SetBackgroundColour((0, 0, 0))
+        black.SetForegroundColour((255, 255, 255))
+        self.legend.Add(yellow, flag=wx.ALL | wx.ALIGN_CENTER)
+        self.legend.Add(green, flag=wx.ALL | wx.ALIGN_CENTER)
+        self.legend.Add(red, flag=wx.ALL | wx.ALIGN_CENTER)
+        self.legend.Add(black, flag=wx.ALL | wx.ALIGN_CENTER)
+
         self.controls_box = wx.BoxSizer(wx.HORIZONTAL)
         self.controls_box.Add(self.speed_box, border=5, flag=wx.ALL | wx.ALIGN_CENTER_VERTICAL)
         self.controls_box.AddSpacer(150)
         self.controls_box.Add(self.pause_button, border=5, flag=wx.ALL | wx.ALIGN_CENTER_VERTICAL)
+        self.controls_box.AddSpacer(150)
+        self.controls_box.Add(self.legend, border=5, flag=wx.ALL | wx.ALIGN_CENTER_VERTICAL)
 
         self.whole_box = wx.BoxSizer(wx.VERTICAL)
         self.whole_box.Add(self.canvas, 1, flag=wx.CENTER | wx.TOP | wx.GROW)
@@ -200,6 +217,8 @@ class GraphView(wx.Panel):
 
     def draw_plot(self):
         self.axes.clear()
+        pylab.setp(self.axes.get_xticklabels(), visible=False)
+        pylab.setp(self.axes.get_yticklabels(), visible=False)
         layout = nx.drawing.layout.circular_layout(self.data)
         nx.draw_networkx(self.data, pos=layout, node_color=self.colors, ax=self.axes)
         self.canvas.draw()
